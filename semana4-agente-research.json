@@ -1,0 +1,435 @@
+{
+  "name": "semana4-agente-research",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of items) {\n  const { pregunta, idioma } = item.json.body;\n\n  if (!pregunta?.trim()) {\n    throw new Error('El campo pregunta es obligatorio');\n  }\n\n  item.json = {\n    pregunta:   pregunta.trim(),\n    idioma:     idioma?.trim() || 'es',\n    timestamp:  new Date().toISOString(),\n  };\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        -16
+      ],
+      "id": "cc16955d-0026-4d69-8021-a77aca3bd508",
+      "name": "Validar entrada",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={{ encodeURIComponent($json.pregunta) }}&format=json&utf8=1&srlimit=3",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -112,
+        -16
+      ],
+      "id": "0f6209f1-d706-4d6f-8699-4f95fd647af6",
+      "name": "Buscar en Wikipedia"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of items) {\n  const pages = item.json.query.pages;\n  const pageId = Object.keys(pages)[0];\n  const pagina = pages[pageId];\n\n  item.json = {\n    pregunta:  $('Validar entrada').first().json.pregunta,\n    idioma:    $('Validar entrada').first().json.idioma,\n    titulo:    pagina.title,\n    contenido: pagina.extract,\n    timestamp: $('Validar entrada').first().json.timestamp,\n  };\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        272,
+        -16
+      ],
+      "id": "d39c71f9-4d82-413c-916c-3f3b99d01697",
+      "name": "Preparar contexto"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of items) {\n  const texto = item.json.content[0].text;\n\n  let research;\n  try {\n    research = JSON.parse(texto);\n  } catch (e) {\n    research = {\n      respuesta: 'Error al procesar la respuesta',\n      puntos_clave: [],\n      fuente: 'desconocida',\n      confianza: 'baja'\n    };\n  }\n\n  item.json = {\n    pregunta:  $('Validar entrada').first().json.pregunta,\n    idioma:    $('Validar entrada').first().json.idioma,\n    research:  research,\n    timestamp: new Date().toISOString(),\n  };\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        -16
+      ],
+      "id": "f8268b7a-ec08-4573-8868-1aaed0826c42",
+      "name": "Parsear research"
+    },
+    {
+      "parameters": {
+        "url": "=https://en.wikipedia.org/w/api.php?action=query&pageids={{ $json.query.search[0].pageid }}&prop=extracts&exintro=1&explaintext=1&format=json",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        80,
+        -16
+      ],
+      "id": "bc172e44-4af2-4547-903a-8b1960d19842",
+      "name": "Obtener contenido"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of items) {\n  item.json = {\n    ok: false,\n    error: item.json.error || 'Error desconocido',\n    timestamp: new Date().toISOString(),\n  };\n}\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -16,
+        -208
+      ],
+      "id": "015d2b81-a658-4a5c-a440-7f06ca20f45c",
+      "name": "Mensaje de error"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        400,
+        -208
+      ],
+      "id": "c34d8800-9010-49a8-a905-b23ae7fc346c",
+      "name": "Error Respond"
+    },
+    {
+      "parameters": {
+        "tableId": "execution_logs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "workflow",
+              "fieldValue": "clasificador-emails"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "success"
+            },
+            {
+              "fieldId": "input",
+              "fieldValue": "=={{ JSON.stringify({ pregunta: $('Validar entrada').first().json.pregunta, idioma: $('Validar entrada').first().json.idioma }) }}"
+            },
+            {
+              "fieldId": "output",
+              "fieldValue": "=={{ JSON.stringify({respuesta: $('Parsear research').first().json.research.respuesta, punto_clave: $('Parsear research').first().json.research.puntos_clave, confianza: $('Parsear research').first().json.research.confianza}) }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        832,
+        -16
+      ],
+      "id": "59a3a68f-2751-4021-931c-28f6c4f34224",
+      "name": "Logs Status",
+      "credentials": {
+        "supabaseApi": {
+          "id": "8AZEsjqPrNiZUMC8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "execution_logs",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "workflow",
+              "fieldValue": "agent-research"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "error"
+            },
+            {
+              "fieldId": "error",
+              "fieldValue": "={{ $('Mensaje de error').first().json.error }}"
+            },
+            {
+              "fieldId": "timestamp",
+              "fieldValue": "=={{ $now.toISO() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -208
+      ],
+      "id": "be6f1298-5504-4af8-b57c-4168cb70e5db",
+      "name": "Log error",
+      "credentials": {
+        "supabaseApi": {
+          "id": "8AZEsjqPrNiZUMC8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fd58810d-adc4-4180-9cb8-6e9897dcfa6d",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -320,
+        -16
+      ],
+      "id": "e1dd39ad-0d95-496d-8586-0c088549262a",
+      "name": "Control de errores",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "research",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        -16
+      ],
+      "id": "b2a9d183-a22c-4ad8-8667-07f7f5a1fbbf",
+      "name": "Entrada",
+      "webhookId": "aa47cf37-7bee-499d-b63c-47fcd862bd0c"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        992,
+        -16
+      ],
+      "id": "61ef66c0-2d7d-439d-9776-6f06cd2d26d4",
+      "name": "Salida"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-haiku-4-5-20251001",
+          "mode": "list",
+          "cachedResultName": "claude-haiku-4-5-20251001"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Eres un asistente de investigación. Basándote en el siguiente contenido de Wikipedia, responde la pregunta del usuario de forma clara y estructurada.\n\nResponde ÚNICAMENTE en {{ $json.idioma === 'es' ? 'español' : 'inglés' }}.\nResponde ÚNICAMENTE con un objeto JSON válido, sin markdown, sin backticks, empezando por { y terminando por }.\n\nSchema exacto:\n{\n  \"respuesta\": \"respuesta clara y completa a la pregunta\",\n  \"puntos_clave\": [\"punto 1\", \"punto 2\", \"punto 3\"],\n  \"fuente\": \"título del artículo de Wikipedia usado\",\n  \"confianza\": \"alta | media | baja\"\n}\n\nPregunta: {{ $json.pregunta }}\n\nContenido de Wikipedia:\n{{ $json.contenido }}\n\nIMPORTANTE: No uses markdown, no uses backticks, no uses ```json```.\nDevuelve el objeto JSON directamente, empezando por { y terminando por }."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        416,
+        192
+      ],
+      "id": "ee4e3fae-362a-453d-b0e0-ea711f160289",
+      "name": "Claude Research",
+      "credentials": {
+        "anthropicApi": {
+          "id": "mtX3NesmoKWOrmbr",
+          "name": "Anthropic account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Validar entrada": {
+      "main": [
+        [
+          {
+            "node": "Control de errores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar en Wikipedia": {
+      "main": [
+        [
+          {
+            "node": "Obtener contenido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar contexto": {
+      "main": [
+        [
+          {
+            "node": "Claude Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear research": {
+      "main": [
+        [
+          {
+            "node": "Salida",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Logs Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener contenido": {
+      "main": [
+        [
+          {
+            "node": "Preparar contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje de error": {
+      "main": [
+        [
+          {
+            "node": "Log error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Logs Status": {
+      "main": [
+        [
+          {
+            "node": "Salida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log error": {
+      "main": [
+        [
+          {
+            "node": "Error Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Control de errores": {
+      "main": [
+        [
+          {
+            "node": "Mensaje de error",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Buscar en Wikipedia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entrada": {
+      "main": [
+        [
+          {
+            "node": "Validar entrada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Research": {
+      "main": [
+        [
+          {
+            "node": "Parsear research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "be91540f-8abf-400b-ac6a-588670a3e7d3",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c002436fafbde0371514a7f02328909ad8f0208db57001e38907991eaa1f533a"
+  },
+  "nodeGroups": [],
+  "id": "mt4XnJFD4UAGX9QS",
+  "tags": []
+}
